@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2001,SC2155
+set -eo pipefail
+
+TRIM='s/^[[:blank:]]*//;s/^[[:blank:]]*$//'
+STRIP_COMMENT='s/^(<!--|\/\*) *//;s/ *(-->|\*\/)$//'
+STRIP_INCLUDE='s/^@(import|include) *//'
+STRIP_QUOTES="s/^[\"']//;s/[\"']$//"
+EXTRACT_FILENAME="${TRIM};${STRIP_COMMENT};${STRIP_INCLUDE};${STRIP_QUOTES}"
+
+indent(){ sed "s/^/${1}/g"; }
+short-path(){ echo "$1" | sed "s#^$(pwd -P)/#./#"; }
+absolute-path(){ cd "$(dirname "$1")" 2> /dev/null || return $?; pwd -P; }
+extract-indentation(){ echo "$1" | sed -E 's/^([[:blank:]]*).*/\1/p' | head -n1; }
+is-kit(){ echo "$1" | grep -q '.kit$'; }
+has-include(){ echo "$1" | grep -q '\(<!--\|//\|/*\)[[:blank:]]*@\(import\|include\)'; }
+extract-filename(){ echo "$1" | sed -E "${EXTRACT_FILENAME}"; }
+
+missing-path-invariant(){
+	local path="$1"
+	local errorname="${2:-Error}"
+	local location="$3"
+
+	if [ ! -f "$path" ]; then
+		printf '\n-- %s: %s --\n' "$errorname" "$(short-path "$location")" >&2
+		printf '\nFile "%s" not found!\n\n' "$(short-path "$path")" >&2
+		exit 1
+	fi
+}
+
+parse(){
+	local input="$1"
+	local baseidentation="$2"
+	local directory="$(absolute-path "$input")"
+	missing-path-invariant "$input"
+
+	while IFS='' read -r line; do
+		((linenumber+=1))
+
+		if ! has-include "$line"; then
+			echo "$line" | indent "$baseidentation"
+			continue
+		fi
+
+		local indentation="${baseidentation}$(extract-indentation "$line")"
+		local filename="$(extract-filename "$line")"
+		local path="${directory}/${filename}"
+		missing-path-invariant "$path" 'ImportError' "${input}:${linenumber}"
+
+		if(is-kit "$filename"); then
+			parse "$path" "$indentation"
+		else
+			indent "$indentation" < "$path"
+		fi
+	done < "$input"
+}
+
+parse "$1"

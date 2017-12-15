@@ -1,0 +1,11 @@
+{
+  "name": "kitsch",
+  "version": "0.0.0-alpha",
+  "description": "",
+  "bin": "kitsch",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 0"
+  },
+  "author": "",
+  "license": "ISC"
+}
